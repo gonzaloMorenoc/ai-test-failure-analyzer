@@ -1,0 +1,68 @@
+[
+    {
+      "name": "Login feature",
+      "elements": [
+        {
+          "name": "Successful login with valid credentials",
+          "steps": [
+            {
+              "name": "Given I am on the login page",
+              "result": { "status": "passed", "duration": 1200000000 }
+            },
+            {
+              "name": "When I login with valid credentials",
+              "result": { "status": "passed", "duration": 800000000 }
+            },
+            {
+              "name": "Then I should see the dashboard",
+              "result": { "status": "passed", "duration": 500000000 }
+            }
+          ]
+        },
+        {
+          "name": "Login fails with locked user",
+          "steps": [
+            {
+              "name": "Given I am on the login page",
+              "result": { "status": "passed", "duration": 900000000 }
+            },
+            {
+              "name": "When I login with a locked user",
+              "result": { "status": "failed",
+                "error_message": "org.openqa.selenium.NoSuchElementException: Unable to locate element: .alert-locked-user\n  at LoginPage.assertLockedUserMessage(LoginPage.java:57)\nCaused by: org.openqa.selenium.TimeoutException: Expected condition failed: waiting for alert element"
+              }
+            },
+            {
+              "name": "Then I should see a locked user message",
+              "result": { "status": "skipped" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Order management feature",
+      "elements": [
+        {
+          "name": "Create order with invalid product",
+          "steps": [
+            {
+              "name": "Given I have an invalid product id",
+              "result": { "status": "passed", "duration": 400000000 }
+            },
+            {
+              "name": "When I create the order",
+              "result": {
+                "status": "failed",
+                "error_message": "AssertionError: Expected status code 400 but was 500\nRequest: POST /api/orders\nBody: {\"productId\":\"INVALID\",\"quantity\":1}\nResponse body: {\"error\":\"internal_error\",\"correlationId\":\"xyz-999\"}"
+              }
+            },
+            {
+              "name": "Then I should see a validation error",
+              "result": { "status": "skipped" }
+            }
+          ]
+        }
+      ]
+    }
+  ]

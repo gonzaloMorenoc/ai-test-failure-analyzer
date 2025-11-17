@@ -1,0 +1,142 @@
+{
+  "config": {
+    "rootDir": "/path/to/tests",
+    "version": "1.40.0"
+  },
+  "suites": [
+    {
+      "title": "Authentication Tests",
+      "file": "tests/auth.spec.ts",
+      "specs": [
+        {
+          "title": "should login successfully with valid credentials",
+          "ok": true,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "passed",
+                  "duration": 2341,
+                  "startTime": "2024-01-15T10:30:00.000Z"
+                }
+              ],
+              "status": "expected"
+            }
+          ]
+        },
+        {
+          "title": "should show error with invalid credentials",
+          "ok": false,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "status": "failed",
+                  "duration": 5124,
+                  "startTime": "2024-01-15T10:30:05.000Z",
+                  "error": {
+                    "message": "Timeout 5000ms exceeded.\nWaiting for locator('.error-message') to be visible",
+                    "stack": "Error: Timeout 5000ms exceeded.\n    at Locator.waitFor (/path/to/node_modules/@playwright/test/lib/locator.js:123:15)\n    at /path/to/tests/auth.spec.ts:34:5"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Product Catalog Tests",
+      "file": "tests/products.spec.ts",
+      "specs": [
+        {
+          "title": "should load product list",
+          "ok": true,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "status": "passed",
+                  "duration": 1823,
+                  "startTime": "2024-01-15T10:30:10.000Z"
+                }
+              ],
+              "status": "expected"
+            }
+          ]
+        },
+        {
+          "title": "should filter products by category",
+          "ok": false,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "firefox",
+              "projectName": "firefox",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "status": "timedOut",
+                  "duration": 30000,
+                  "startTime": "2024-01-15T10:30:15.000Z",
+                  "error": {
+                    "message": "Test timeout of 30000ms exceeded.",
+                    "stack": "Error: Test timeout of 30000ms exceeded.\n    at Timeout._onTimeout (/path/to/node_modules/@playwright/test/lib/worker.js:234:12)"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ]
+        },
+        {
+          "title": "should add product to cart",
+          "ok": false,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "status": "failed",
+                  "duration": 3456,
+                  "startTime": "2024-01-15T10:30:45.000Z",
+                  "error": {
+                    "message": "expect(received).toBe(expected)\n\nExpected: \"1\"\nReceived: \"0\"",
+                    "stack": "Error: expect(received).toBe(expected)\n\nExpected: \"1\"\nReceived: \"0\"\n    at /path/to/tests/products.spec.ts:67:35\n    at /path/to/node_modules/@playwright/test/lib/test.js:156:23"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

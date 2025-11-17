@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ExampleTestSuite" tests="5" failures="2" errors="0" skipped="0" time="12.345">
+  <testsuite name="auth.LoginTests" tests="3" failures="1" errors="0" skipped="0" time="7.123">
+    <testcase classname="auth.LoginTests" name="should_login_successfully" time="2.001"/>
+    <testcase classname="auth.LoginTests" name="should_fail_with_invalid_password" time="1.532"/>
+    <testcase classname="auth.LoginTests" name="should_timeout_when_auth_service_slow" time="3.590">
+      <failure message="Timeout while waiting for response from /api/auth/login" type="TimeoutException">
+        <![CDATA[
+org.openqa.selenium.TimeoutException: Expected condition failed: waiting for visibility of element located by By.id: dashboard
+  at org.openqa.selenium.support.ui.WebDriverWait.timeoutException(WebDriverWait.java:95)
+  at org.openqa.selenium.support.ui.FluentWait.until(FluentWait.java:272)
+Caused by: java.net.SocketTimeoutException: Read timed out
+  at java.base/java.net.SocketInputStream.socketRead0(Native Method)
+  at java.base/java.net.SocketInputStream.socketRead(SocketInputStream.java:115)
+        ]]>
+      </failure>
+    </testcase>
+  </testsuite>
+
+  <testsuite name="orders.ApiOrderTests" tests="2" failures="1" errors="0" skipped="0" time="5.222">
+    <testcase classname="orders.ApiOrderTests" name="should_create_order_successfully" time="1.100"/>
+    <testcase classname="orders.ApiOrderTests" name="should_fail_when_order_service_returns_500" time="4.122">
+      <failure message="Expected status code 200 but got 500" type="AssertionError">
+        <![CDATA[
+java.lang.AssertionError: 
+Expected: is &lt;200&gt;
+     but: was &lt;500&gt;
+Request:
+  POST /api/orders HTTP/1.1
+  Host: staging.example.com
+  Body: {"productId":"12345","quantity":1}
+Response:
+  HTTP/1.1 500 Internal Server Error
+  Body: {"error":"internal_error","correlationId":"abc-123-xyz"}
+        ]]>
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>
