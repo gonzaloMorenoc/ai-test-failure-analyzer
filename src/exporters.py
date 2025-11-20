@@ -1,42 +1,23 @@
-import os
 import re
+import html
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple
-
+from typing import Optional, Dict, List
 
 def export_to_markdown(content: str, output_path: Optional[Path] = None) -> Path:
-    """
-    Exporta el análisis a un archivo Markdown.
-    
-    Args:
-        content: Contenido del análisis en formato Markdown
-        output_path: Path personalizado. Si es None, usa output/analysis-{timestamp}.md
-    
-    Returns:
-        Path al archivo generado
-    """
     if output_path is None:
-        # Crear directorio output si no existe
         output_dir = Path("output")
         output_dir.mkdir(exist_ok=True)
-        
-        # Generar nombre con timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = output_dir / f"analysis-{timestamp}.md"
     
-    # Escribir el archivo
     output_path.write_text(content, encoding="utf-8")
-    
     return output_path
-
 
 def parse_markdown_sections(content: str) -> Dict[str, str]:
     """
-    Parsea el contenido markdown y extrae secciones clave.
-    
-    Returns:
-        Dict con secciones: resumen, analisis, recomendaciones
+    Estrategia de parsing robusta: Divide el documento por encabezados de nivel 1 (#)
+    y asigna secciones buscando palabras clave en el título, sin importar emojis o formato.
     """
     sections = {
         'resumen': '',
@@ -45,576 +26,248 @@ def parse_markdown_sections(content: str) -> Dict[str, str]:
         'raw': content
     }
     
-    # Buscar Resumen Ejecutivo
-    resumen_match = re.search(r'#+ Resumen Ejecutivo\s*\n+(.*?)(?=\n#|$)', content, re.DOTALL | re.IGNORECASE)
-    if resumen_match:
-        sections['resumen'] = resumen_match.group(1).strip()
+    # Normalizar saltos de línea
+    content = content.replace('\r\n', '\n')
     
-    # Buscar Análisis de Fallos
-    analisis_match = re.search(r'#+ An[aá]lisis de Fallos\s*\n+(.*?)(?=\n# Recomendaciones|$)', content, re.DOTALL | re.IGNORECASE)
-    if analisis_match:
-        sections['analisis'] = analisis_match.group(1).strip()
+    # Dividir por encabezados de Nivel 1 (# Título)
+    # La regex busca el inicio de línea, un #, espacio y el resto.
+    chunks = re.split(r'(?m)^#\s+(.*?)\n', content)
     
-    # Buscar Recomendaciones
-    recomendaciones_match = re.search(r'#+ Recomendaciones.*?\n+(.*?)$', content, re.DOTALL | re.IGNORECASE)
-    if recomendaciones_match:
-        sections['recomendaciones'] = recomendaciones_match.group(1).strip()
-    
+    # chunks[0] es texto antes del primer header (vacío usualmente)
+    # chunks[1] es el título 1, chunks[2] es el contenido 1, chunks[3] título 2...
+    for i in range(1, len(chunks), 2):
+        title = chunks[i].lower()
+        body = chunks[i+1].strip()
+        
+        if 'resumen' in title:
+            sections['resumen'] = body
+        elif 'análisis' in title or 'analisis' in title or 'fallos' in title:
+            sections['analisis'] = body
+        elif 'recomendaciones' in title:
+            sections['recomendaciones'] = body
+            
     return sections
 
-
 def extract_failure_categories(analisis_text: str) -> List[Dict[str, str]]:
-    """
-    Extrae categorías de fallos del análisis.
-    
-    Returns:
-        Lista de diccionarios con información de cada categoría
-    """
     categories = []
+    if not analisis_text:
+        return categories
+
+    # Dividir por encabezados de nivel 2 (##) independientemente de lo que siga (emojis, texto)
+    raw_blocks = re.split(r'(?m)^##\s+', analisis_text)
     
-    # Dividir por ## (cada categoría)
-    category_blocks = re.split(r'\n## ', analisis_text)
-    
-    for block in category_blocks[1:]:  # Saltar el primer elemento vacío
-        lines = block.strip().split('\n')
-        if not lines:
+    for block in raw_blocks:
+        if not block.strip():
             continue
             
-        # Título de la categoría
-        title = lines[0].strip()
+        lines = block.strip().split('\n')
+        # Limpiar el título de emojis y markdown extra para visualización limpia
+        raw_title = lines[0].strip()
+        # Elimina caracteres markdown de cierre si existen y emojis básicos del inicio
+        title = raw_title
         
-        # Extraer gravedad
-        gravedad = 'Media'
-        gravedad_match = re.search(r'\*\*Gravedad:\*\*\s*(\w+)', block, re.IGNORECASE)
-        if gravedad_match:
-            gravedad = gravedad_match.group(1)
+        # Extracción de campos usando regex flexible que salta emojis y **
+        # Busca: **Gravedad:** Alta  O  Gravedad: Alta
+        gravedad_match = re.search(r'(?:\*\*|)?Gravedad:?(?:\*\*|)?\s*(.+)', block, re.IGNORECASE)
+        gravedad = gravedad_match.group(1).strip() if gravedad_match else "No especificada"
         
-        # Extraer cantidad
-        cantidad = ''
-        cantidad_match = re.search(r'\*\*Cantidad:\*\*\s*(.+)', block, re.IGNORECASE)
-        if cantidad_match:
-            cantidad = cantidad_match.group(1).strip()
+        cantidad_match = re.search(r'(?:\*\*|)?Cantidad:?(?:\*\*|)?\s*(.+)', block, re.IGNORECASE)
+        cantidad = cantidad_match.group(1).strip() if cantidad_match else ""
         
-        # Extraer causa probable
-        causa = ''
-        causa_match = re.search(r'\*\*Causa probable:\*\*\s*\n+(.*?)(?=\n\*\*|$)', block, re.DOTALL | re.IGNORECASE)
-        if causa_match:
-            causa = causa_match.group(1).strip()
+        # Causa: Busca desde la etiqueta hasta el siguiente doble salto o etiqueta fuerte
+        causa_match = re.search(r'(?:\*\*|)?Causa( probable)?:?(?:\*\*|)?\s*\n(.*?)(?=\n\*\*|\n#|$)', block, re.DOTALL | re.IGNORECASE)
+        causa = causa_match.group(2).strip() if causa_match else ""
         
-        # Extraer tests afectados
+        # Tests afectados: Busca lista de viñetas
         tests = []
-        tests_section = re.search(r'\*\*Tests afectados:\*\*\s*\n+(.*?)(?=\n\*\*|$)', block, re.DOTALL | re.IGNORECASE)
+        tests_section = re.search(r'(?:\*\*|)?Tests( afectados)?:?(?:\*\*|)?\s*\n(.*?)(?=\n\*\*|\n#|$)', block, re.DOTALL | re.IGNORECASE)
         if tests_section:
-            test_lines = tests_section.group(1).strip().split('\n')
-            tests = [line.strip('- ').strip() for line in test_lines if line.strip().startswith('-')]
+            test_lines = tests_section.group(2).strip().split('\n')
+            for line in test_lines:
+                # Captura líneas que empiezan por -, *, o 1.
+                clean = re.sub(r'^[\-\*\d\.]+\s+', '', line.strip())
+                if clean and len(clean) > 3: # Filtro de ruido
+                    tests.append(clean)
         
         categories.append({
-            'title': title,
-            'gravedad': gravedad,
-            'cantidad': cantidad,
-            'causa': causa,
-            'tests': tests,
+            'title': html.escape(title),
+            'gravedad': html.escape(gravedad),
+            'cantidad': html.escape(cantidad),
+            'causa': html.escape(causa).replace('\n', '<br>'),
+            'tests': [html.escape(t) for t in tests],
             'raw': block
         })
     
     return categories
 
+def extract_recommendations(text: str) -> Dict[str, List[str]]:
+    recs = {'critico': [], 'importante': [], 'menor': []}
+    if not text:
+        return recs
 
-def extract_recommendations(recomendaciones_text: str) -> Dict[str, List[str]]:
-    """
-    Extrae recomendaciones por prioridad.
+    # Estrategia: Buscar bloques que empiecen por **[Emoji] Texto:**
     
-    Returns:
-        Dict con listas de recomendaciones: critico, importante, menor
-    """
-    recs = {
-        'critico': [],
-        'importante': [],
-        'menor': []
-    }
+    # Regex genérica para capturar listas de items
+    # Busca cualquier línea que empiece con guión o asterisco
+    def parse_list(content):
+        items = []
+        for line in content.split('\n'):
+            clean = line.strip()
+            if clean.startswith('- ') or clean.startswith('* '):
+                items.append(html.escape(clean[2:]))
+        return items
+
+    # Dividir el texto por los encabezados de prioridad (identificados por negrita **)
+    # Ejemplo input: **🔴 Crítico:** ...items... **🟡 Importante:** ...
     
-    # Buscar crítico
-    critico_match = re.search(r'🔴.*?Cr[ií]tico.*?\n+(.*?)(?=\n\*\*🟡|\n\*\*🟢|$)', recomendaciones_text, re.DOTALL | re.IGNORECASE)
-    if critico_match:
-        lines = critico_match.group(1).strip().split('\n')
-        recs['critico'] = [line.strip('- ').strip() for line in lines if line.strip().startswith('-')]
-    
-    # Buscar importante
-    importante_match = re.search(r'🟡.*?Importante.*?\n+(.*?)(?=\n\*\*🟢|$)', recomendaciones_text, re.DOTALL | re.IGNORECASE)
-    if importante_match:
-        lines = importante_match.group(1).strip().split('\n')
-        recs['importante'] = [line.strip('- ').strip() for line in lines if line.strip().startswith('-')]
-    
-    # Buscar menor
-    menor_match = re.search(r'🟢.*?Menor.*?\n+(.*?)$', recomendaciones_text, re.DOTALL | re.IGNORECASE)
-    if menor_match:
-        lines = menor_match.group(1).strip().split('\n')
-        recs['menor'] = [line.strip('- ').strip() for line in lines if line.strip().startswith('-')]
-    
+    # Crítico
+    critico_block = re.search(r'\*\*.*?(?:Cr[ií]tico|Inmediat).*?\*\*(.*?)(?=\*\*|$)', text, re.DOTALL | re.IGNORECASE)
+    if critico_block:
+        recs['critico'] = parse_list(critico_block.group(1))
+        
+    # Importante
+    importante_block = re.search(r'\*\*.*?(?:Importante|Pronto).*?\*\*(.*?)(?=\*\*|$)', text, re.DOTALL | re.IGNORECASE)
+    if importante_block:
+        recs['importante'] = parse_list(importante_block.group(1))
+        
+    # Menor
+    menor_block = re.search(r'\*\*.*?(?:Menor|Posible|Baja).*?\*\*(.*?)(?=\*\*|$)', text, re.DOTALL | re.IGNORECASE)
+    if menor_block:
+        recs['menor'] = parse_list(menor_block.group(1))
+        
     return recs
 
-
 def export_to_html(content: str, output_path: Optional[Path] = None) -> Path:
-    """
-    Exporta el análisis a un archivo HTML visual y moderno.
-    
-    Args:
-        content: Contenido del análisis en formato Markdown
-        output_path: Path personalizado. Si es None, usa output/analysis-{timestamp}.html
-    
-    Returns:
-        Path al archivo generado
-    """
     if output_path is None:
         output_dir = Path("output")
         output_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = output_dir / f"analysis-{timestamp}.html"
     
-    # Parsear contenido
     sections = parse_markdown_sections(content)
     categories = extract_failure_categories(sections.get('analisis', ''))
     recommendations = extract_recommendations(sections.get('recomendaciones', ''))
     
-    # Contar totales
+    # Contadores
     total_categories = len(categories)
-    total_critical = len(recommendations.get('critico', []))
-    total_important = len(recommendations.get('importante', []))
+    total_critical = len(recommendations['critico'])
+    total_important = len(recommendations['importante'])
     
-    # Mapeo de gravedad a colores
-    gravedad_colors = {
-        'alta': '#dc3545',
-        'media': '#ffc107',
-        'baja': '#28a745'
-    }
-    
-    # Generar HTML de categorías
+    # Colores
+    gravedad_colors = {'alta': '#dc3545', 'media': '#ffc107', 'baja': '#28a745'}
+
+    # Generar HTML Categorías
     categories_html = ""
     for cat in categories:
-        gravedad_lower = cat['gravedad'].lower()
-        color = gravedad_colors.get(gravedad_lower, '#6c757d')
+        g_lower = cat['gravedad'].lower()
+        color = '#6c757d'
+        if 'alta' in g_lower: color = gravedad_colors['alta']
+        elif 'media' in g_lower: color = gravedad_colors['media']
+        elif 'baja' in g_lower: color = gravedad_colors['baja']
         
-        tests_html = ""
-        for test in cat['tests'][:5]:  # Máximo 5 tests mostrados
-            tests_html += f"<li class='test-item'>{test}</li>"
-        
-        if len(cat['tests']) > 5:
-            tests_html += f"<li class='test-item more'>+ {len(cat['tests']) - 5} tests más</li>"
-        
+        tests_html = "".join([f"<li class='test-item'>{t}</li>" for t in cat['tests']])
+            
         categories_html += f"""
         <div class="failure-card">
             <div class="card-header">
                 <h3 class="card-title">{cat['title']}</h3>
-                <span class="badge badge-{gravedad_lower}" style="background: {color}">
-                    {cat['gravedad']}
-                </span>
+                <span class="badge" style="background: {color}">{cat['gravedad']}</span>
             </div>
             <div class="card-body">
                 <div class="stat">
                     <span class="stat-label">Tests afectados:</span>
                     <span class="stat-value">{cat['cantidad'] or len(cat['tests'])}</span>
                 </div>
-                
-                {'<div class="section"><strong>Causa probable:</strong><p>' + cat['causa'] + '</p></div>' if cat['causa'] else ''}
-                
-                {f'<div class="section"><strong>Tests afectados:</strong><ul class="test-list">{tests_html}</ul></div>' if cat['tests'] else ''}
+                <div class="section"><strong>Causa probable:</strong><p>{cat['causa']}</p></div>
+                <div class="section"><strong>Tests:</strong><ul class="test-list">{tests_html}</ul></div>
             </div>
         </div>
         """
-    
-    # Generar HTML de recomendaciones
+
+    # Generar HTML Recomendaciones
     recommendations_html = ""
+    rec_map = [
+        ('critico', '🔴 Crítico', 'rec-critico'),
+        ('importante', '🟡 Importante', 'rec-importante'),
+        ('menor', '🟢 Menor', 'rec-menor')
+    ]
     
-    if recommendations['critico']:
-        recommendations_html += """
-        <div class="rec-section rec-critical">
-            <div class="rec-header">
-                <span class="rec-icon">🔴</span>
-                <h3>Crítico - Acción Inmediata</h3>
-            </div>
-            <ul class="rec-list">
-        """
-        for rec in recommendations['critico']:
-            recommendations_html += f"<li>{rec}</li>"
-        recommendations_html += "</ul></div>"
-    
-    if recommendations['importante']:
-        recommendations_html += """
-        <div class="rec-section rec-important">
-            <div class="rec-header">
-                <span class="rec-icon">🟡</span>
-                <h3>Importante - Resolver Pronto</h3>
-            </div>
-            <ul class="rec-list">
-        """
-        for rec in recommendations['importante']:
-            recommendations_html += f"<li>{rec}</li>"
-        recommendations_html += "</ul></div>"
-    
-    if recommendations['menor']:
-        recommendations_html += """
-        <div class="rec-section rec-minor">
-            <div class="rec-header">
-                <span class="rec-icon">🟢</span>
-                <h3>Menor - Revisar Cuando Sea Posible</h3>
-            </div>
-            <ul class="rec-list">
-        """
-        for rec in recommendations['menor']:
-            recommendations_html += f"<li>{rec}</li>"
-        recommendations_html += "</ul></div>"
-    
-    # Plantilla HTML
+    for key, title, css_class in rec_map:
+        items = recommendations[key]
+        if items:
+            list_items = "".join([f"<li>{item}</li>" for item in items])
+            recommendations_html += f"""
+            <div class="rec-section {css_class}">
+                <div class="rec-header"><h3>{title}</h3></div>
+                <ul class="rec-list">{list_items}</ul>
+            </div>"""
+
+    # Resumen
+    resumen_html = sections['resumen'].replace('\n', '<br>') if sections['resumen'] else "No disponible."
+    raw_escaped = html.escape(sections['raw'])
+
     html_template = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Análisis de Tests - {datetime.now().strftime("%d/%m/%Y %H:%M")}</title>
+    <title>Test Analysis Report</title>
     <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 40px 20px;
-            color: #2d3748;
-        }}
-        
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-        }}
-        
-        .header {{
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            margin-bottom: 30px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }}
-        
-        .header h1 {{
-            font-size: 2.5em;
-            color: #1a202c;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }}
-        
-        .header .timestamp {{
-            color: #718096;
-            font-size: 0.9em;
-            margin-top: 10px;
-        }}
-        
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        
-        .stat-card {{
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }}
-        
-        .stat-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
-        }}
-        
-        .stat-card .stat-number {{
-            font-size: 3em;
-            font-weight: bold;
-            display: block;
-            margin-bottom: 5px;
-        }}
-        
-        .stat-card .stat-label {{
-            color: #718096;
-            font-size: 1em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        
-        .stat-card.critical .stat-number {{ color: #dc3545; }}
-        .stat-card.important .stat-number {{ color: #ffc107; }}
-        .stat-card.categories .stat-number {{ color: #667eea; }}
-        
-        .section {{
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }}
-        
-        .section h2 {{
-            font-size: 2em;
-            color: #1a202c;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 3px solid #667eea;
-        }}
-        
-        .summary-box {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 15px;
-            font-size: 1.1em;
-            line-height: 1.8;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-        }}
-        
-        .failure-card {{
-            background: white;
-            border-radius: 12px;
-            margin-bottom: 25px;
-            overflow: hidden;
-            border-left: 5px solid #667eea;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }}
-        
-        .failure-card:hover {{
-            transform: translateX(5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        }}
-        
-        .card-header {{
-            background: #f7fafc;
-            padding: 20px 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #e2e8f0;
-        }}
-        
-        .card-title {{
-            font-size: 1.3em;
-            color: #2d3748;
-            font-weight: 600;
-        }}
-        
-        .badge {{
-            padding: 8px 16px;
-            border-radius: 20px;
-            color: white;
-            font-weight: bold;
-            font-size: 0.85em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        
-        .badge-alta {{ background: #dc3545; }}
-        .badge-media {{ background: #ffc107; color: #000; }}
-        .badge-baja {{ background: #28a745; }}
-        
-        .card-body {{
-            padding: 25px;
-        }}
-        
-        .card-body .section {{
-            background: transparent;
-            padding: 15px 0;
-            margin: 15px 0;
-            border-bottom: 1px solid #e2e8f0;
-            box-shadow: none;
-        }}
-        
-        .card-body .section:last-child {{
-            border-bottom: none;
-        }}
-        
-        .stat {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-        }}
-        
-        .stat-label {{
-            color: #4a5568;
-            font-weight: 500;
-        }}
-        
-        .stat-value {{
-            color: #667eea;
-            font-weight: bold;
-            font-size: 1.1em;
-        }}
-        
-        .test-list {{
-            list-style: none;
-            margin-top: 10px;
-        }}
-        
-        .test-item {{
-            padding: 10px 15px;
-            background: #f7fafc;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            border-left: 3px solid #667eea;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-        }}
-        
-        .test-item.more {{
-            background: #e2e8f0;
-            color: #4a5568;
-            font-style: italic;
-            border-left-color: #a0aec0;
-        }}
-        
-        .rec-section {{
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 20px;
-            border-left: 5px solid;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }}
-        
-        .rec-critical {{ border-left-color: #dc3545; }}
-        .rec-important {{ border-left-color: #ffc107; }}
-        .rec-minor {{ border-left-color: #28a745; }}
-        
-        .rec-header {{
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-        }}
-        
-        .rec-icon {{
-            font-size: 2em;
-        }}
-        
-        .rec-header h3 {{
-            color: #2d3748;
-            font-size: 1.3em;
-            margin: 0;
-        }}
-        
-        .rec-list {{
-            list-style: none;
-        }}
-        
-        .rec-list li {{
-            padding: 15px 20px;
-            background: #f7fafc;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            position: relative;
-            padding-left: 50px;
-        }}
-        
-        .rec-list li:before {{
-            content: "→";
-            position: absolute;
-            left: 20px;
-            font-size: 1.5em;
-            color: #667eea;
-            font-weight: bold;
-        }}
-        
-        .footer {{
-            text-align: center;
-            margin-top: 50px;
-            padding: 30px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 15px;
-            color: white;
-            backdrop-filter: blur(10px);
-        }}
-        
-        @media print {{
-            body {{
-                background: white;
-                padding: 20px;
-            }}
-            
-            .header, .section, .failure-card, .rec-section {{
-                box-shadow: none;
-                break-inside: avoid;
-            }}
-        }}
-        
-        @media (max-width: 768px) {{
-            .stats-grid {{
-                grid-template-columns: 1fr;
-            }}
-            
-            .header h1 {{
-                font-size: 1.8em;
-            }}
-        }}
+        :root {{ --primary: #667eea; --secondary: #764ba2; --bg: #f4f7f6; --text: #2d3748; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; line-height: 1.6; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .header {{ background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 2rem; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }}
+        .stat-card {{ background: white; padding: 1.5rem; border-radius: 12px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .stat-number {{ display: block; font-size: 2.5rem; font-weight: bold; color: var(--primary); }}
+        .failure-card {{ background: white; border-radius: 12px; margin-bottom: 1.5rem; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .card-header {{ background: #f8fafc; padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }}
+        .card-body {{ padding: 1.5rem; }}
+        .card-title {{ margin: 0; font-size: 1.25rem; }}
+        .badge {{ padding: 0.25rem 0.75rem; border-radius: 999px; color: white; font-size: 0.875rem; font-weight: 600; }}
+        .test-list {{ list-style: none; padding: 0; margin-top: 1rem; }}
+        .test-item {{ background: #f1f5f9; padding: 0.5rem 1rem; margin-bottom: 0.5rem; border-radius: 6px; font-family: monospace; font-size: 0.9em; }}
+        .rec-section {{ background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border-left: 5px solid #ccc; }}
+        .rec-critico {{ border-left-color: #dc3545; }}
+        .rec-importante {{ border-left-color: #ffc107; }}
+        .rec-menor {{ border-left-color: #28a745; }}
+        .rec-header h3 {{ margin: 0; color: #4a5568; }}
+        .rec-list {{ margin: 1rem 0 0 0; padding-left: 1.5rem; }}
+        details {{ margin-top: 2rem; background: #e2e8f0; padding: 1rem; border-radius: 8px; }}
+        pre {{ white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; }}
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <div class="header">
-            <h1>
-                <span>📊</span>
-                Análisis de Fallos de Tests
-            </h1>
-            <div class="timestamp">
-                📅 Generado el {datetime.now().strftime("%d/%m/%Y a las %H:%M:%S")}
-            </div>
+            <h1>📊 Análisis de Tests Automatizados</h1>
+            <p>{datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
         </div>
         
-        <!-- Stats -->
         <div class="stats-grid">
-            <div class="stat-card categories">
-                <span class="stat-number">{total_categories}</span>
-                <span class="stat-label">Categorías de Fallos</span>
-            </div>
-            <div class="stat-card critical">
-                <span class="stat-number">{total_critical}</span>
-                <span class="stat-label">Acciones Críticas</span>
-            </div>
-            <div class="stat-card important">
-                <span class="stat-number">{total_important}</span>
-                <span class="stat-label">Acciones Importantes</span>
-            </div>
+            <div class="stat-card"><span class="stat-number">{total_categories}</span> Categorías</div>
+            <div class="stat-card"><span class="stat-number" style="color:#dc3545">{total_critical}</span> Críticos</div>
+            <div class="stat-card"><span class="stat-number" style="color:#ffc107">{total_important}</span> Importantes</div>
         </div>
-        
-        <!-- Resumen Ejecutivo -->
-        {f'<div class="summary-box"><strong>📋 Resumen Ejecutivo</strong><br><br>{sections["resumen"]}</div>' if sections['resumen'] else ''}
-        
-        <!-- Análisis de Fallos -->
-        <div class="section">
-            <h2>🔍 Análisis Detallado de Fallos</h2>
-            {categories_html if categories_html else '<p>No se encontraron categorías de fallos en el análisis.</p>'}
+
+        <div style="background:white; padding:2rem; border-radius:12px; margin-bottom:2rem; border-left: 5px solid var(--primary);">
+            <h2>Resumen Ejecutivo</h2>
+            <p>{resumen_html}</p>
         </div>
+
+        <h2>Detalle de Fallos</h2>
+        {categories_html if categories_html else '<p><em>No se encontraron categorías estructuradas.</em></p>'}
+
+        <h2>Recomendaciones</h2>
+        {recommendations_html if recommendations_html else '<p><em>Sin recomendaciones específicas.</em></p>'}
         
-        <!-- Recomendaciones -->
-        {f'<div class="section"><h2>✅ Recomendaciones Priorizadas</h2>{recommendations_html}</div>' if recommendations_html else ''}
-        
-        <!-- Footer -->
-        <div class="footer">
-            <p><strong>🤖 AI Test Failure Analyzer</strong></p>
-            <p>Powered by Ollama</p>
-        </div>
+        <details>
+            <summary>📂 Ver reporte original (Debug)</summary>
+            <pre>{raw_escaped}</pre>
+        </details>
     </div>
 </body>
 </html>"""
     
-    # Escribir el archivo
     output_path.write_text(html_template, encoding="utf-8")
-    
     return output_path
