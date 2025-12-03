@@ -1,0 +1,102 @@
+# =============================================================================
+# AI Test Failure Analyzer - Configuración
+# =============================================================================
+# Copia este archivo como 'analyzer.yaml' y personaliza según tu entorno.
+# Las variables de entorno tienen prioridad sobre este archivo.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Configuración del LLM (Large Language Model)
+# -----------------------------------------------------------------------------
+llm:
+  # Provider: ollama, openai, anthropic
+  # Override: ANALYZER_LLM_PROVIDER
+  provider: ollama
+  
+  # Modelo a utilizar
+  # Ollama: llama3, llama3.2, mistral, codellama, etc.
+  # OpenAI: gpt-4o-mini, gpt-4o, gpt-3.5-turbo
+  # Anthropic: claude-3-haiku-20240307, claude-3-sonnet-20240229
+  # Override: ANALYZER_LLM_MODEL
+  model: llama3.2
+  
+  # URL base del servicio LLM
+  # Override: ANALYZER_LLM_URL
+  base_url: http://localhost:11434
+  
+  # API Key (solo para OpenAI/Anthropic)
+  # Override: ANALYZER_API_KEY
+  # api_key: sk-...
+  
+  # Timeout en segundos para la respuesta del LLM
+  # Override: ANALYZER_LLM_TIMEOUT
+  timeout: 300
+  
+  # Temperatura (creatividad) del modelo (0.0 - 1.0)
+  temperature: 0.3
+
+# -----------------------------------------------------------------------------
+# Configuración de salida/exportación
+# -----------------------------------------------------------------------------
+output:
+  # Directorio donde se guardan los reportes
+  # Override: ANALYZER_OUTPUT_DIR
+  directory: ./output
+  
+  # Formatos de exportación automática
+  formats:
+    - html
+    - md
+    # - json  # Descomenta para habilitar JSON
+  
+  # Incluir el análisis raw en el HTML (sección debug)
+  include_raw: true
+
+# -----------------------------------------------------------------------------
+# Configuración del análisis
+# -----------------------------------------------------------------------------
+analysis:
+  # Idioma del análisis
+  # Override: ANALYZER_LANGUAGE
+  language: es
+  
+  # Máximo de fallos a analizar (para no saturar el contexto del LLM)
+  # Override: ANALYZER_MAX_FAILURES
+  max_failures: 50
+  
+  # Habilitar fingerprinting de errores (agrupa errores similares)
+  # Override: ANALYZER_ENABLE_FINGERPRINT
+  enable_fingerprinting: true
+  
+  # ---------------------------------------------------------------------------
+  # Histórico y detección de regresiones
+  # ---------------------------------------------------------------------------
+  # Habilitar histórico para detectar:
+  # - Nuevos fallos (regresiones)
+  # - Fallos corregidos
+  # - Fallos persistentes
+  # - Tests intermitentes (flaky)
+  # Override: ANALYZER_ENABLE_HISTORY
+  enable_historical: true
+  
+  # Path de la base de datos de histórico (SQLite)
+  # Se recomienda incluir en .gitignore
+  history_db_path: .analyzer_history.db
+
+# -----------------------------------------------------------------------------
+# Configuración CI/CD
+# -----------------------------------------------------------------------------
+ci:
+  # Fallar el build si hay fallos críticos (exit code 2)
+  # Override: ANALYZER_FAIL_ON_CRITICAL
+  fail_on_critical: true
+  
+  # Fallar el build con cualquier fallo (exit code 1)
+  # Override: ANALYZER_FAIL_ON_ANY
+  fail_on_any_failure: false
+  
+  # Número mínimo de indicadores críticos para considerar el build fallido
+  critical_threshold: 1
+  
+  # Nota: Con histórico habilitado, las regresiones (nuevos fallos)
+  # también pueden generar exit code 6 (REGRESSION_DETECTED)
