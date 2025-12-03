@@ -89,6 +89,12 @@ NOTAS IMPORTANTES:
   - Los NUEVOS fallos (que no existían antes) son probablemente regresiones recientes y deben ser CRÍTICOS
   - Los fallos PERSISTENTES que llevan muchas ejecuciones sin resolverse merecen atención
   - Los tests INTERMITENTES (flaky) deben identificarse claramente
+- Si hay información de TESTS FLAKY:
+  - Los tests con flakiness score ALTO (>70) son críticos y afectan la confiabilidad del pipeline
+  - Prioriza estabilizar tests flaky antes de añadir nuevos tests
+  - Menciona el patrón detectado (random, degrading, periodic) y sugiere acciones específicas
+  - Tests flaky con patrón "random" suelen indicar race conditions o problemas de sincronización
+  - Tests flaky con patrón "degrading" pueden indicar problemas de rendimiento acumulativos
 """.strip()
 
 
@@ -98,6 +104,7 @@ def build_user_prompt(
     playwright_failures: List[Dict[str, Any]],
     fingerprint_summary: Optional[Dict[str, Any]] = None,
     regression_info: Optional['RegressionInfo'] = None,
+    flaky_summary: Optional[str] = None,
 ) -> str:
     """
     Construye el prompt de usuario con representación concisa de los fallos.
@@ -108,6 +115,7 @@ def build_user_prompt(
         playwright_failures: Lista de fallos Playwright
         fingerprint_summary: Resumen de fingerprinting (opcional)
         regression_info: Información de regresión (opcional)
+        flaky_summary: Resumen de tests flaky formateado (opcional)
         
     Returns:
         Prompt formateado en Markdown
@@ -126,6 +134,13 @@ def build_user_prompt(
     # === Información de Regresión (si está disponible) ===
     if regression_info and format_regression_report:
         lines.append(format_regression_report(regression_info))
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+    
+    # === Información de Flaky Tests (si está disponible) ===
+    if flaky_summary:
+        lines.append(flaky_summary)
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -297,6 +312,7 @@ def analyze_failures(
     model: str = "llama3",
     fingerprint_summary: Optional[Dict[str, Any]] = None,
     regression_info: Optional['RegressionInfo'] = None,
+    flaky_summary: Optional[str] = None,
 ) -> str:
     """
     Analiza los fallos usando Ollama con progress bar visual.
@@ -308,6 +324,7 @@ def analyze_failures(
         model: Nombre del modelo Ollama a usar
         fingerprint_summary: Resumen de fingerprinting (opcional)
         regression_info: Información de regresión del histórico (opcional)
+        flaky_summary: Resumen de tests flaky formateado (opcional)
     
     Returns:
         Análisis en formato Markdown
@@ -337,7 +354,8 @@ def analyze_failures(
             cucumber_failures, 
             playwright_failures,
             fingerprint_summary,
-            regression_info
+            regression_info,
+            flaky_summary
         )
         
         progress.update(task1, advance=70, description="[green]✓ Datos preparados")

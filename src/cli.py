@@ -27,6 +27,13 @@ from src.fingerprint import (
     group_failures_by_fingerprint,
     get_pattern_summary,
 )
+from src.history import AnalysisHistory, RegressionInfo
+from src.flaky_detector import (
+    FlakyDetector,
+    FlakyAnalysisReport,
+    FlakinessSeverity,
+    format_flaky_report_console,
+)
 
 console = Console()
 
@@ -42,12 +49,16 @@ class ExitCode:
     ANALYSIS_ERROR = 3       # Error durante el análisis
     CONFIG_ERROR = 4         # Error de configuración
     NO_REPORTS_FOUND = 5     # No se encontraron reportes para analizar
+    REGRESSION_DETECTED = 6  # Regresión detectada (nuevos fallos)
+    CRITICAL_FLAKY = 7       # Tests flaky críticos detectados
 
 
 def determine_exit_code(
     analysis: str, 
     total_failures: int,
-    config: AnalyzerConfig
+    config: AnalyzerConfig,
+    regression_info: Optional[RegressionInfo] = None,
+    flaky_report: Optional[FlakyAnalysisReport] = None
 ) -> int:
     """
     Determina el código de salida basado en el análisis y configuración.
@@ -56,12 +67,25 @@ def determine_exit_code(
         analysis: Texto del análisis generado por el LLM
         total_failures: Número total de fallos encontrados
         config: Configuración del analizador
+        regression_info: Información de regresión (opcional)
+        flaky_report: Reporte de flaky tests (opcional)
         
     Returns:
         Código de salida apropiado
     """
     if total_failures == 0:
         return ExitCode.SUCCESS
+    
+    # Verificar flaky críticos si está configurado
+    if flaky_report and config.flaky.fail_on_critical_flaky:
+        if flaky_report.critical_count > 0:
+            return ExitCode.CRITICAL_FLAKY
+    
+    # Verificar regresiones si hay info histórica
+    if regression_info and not regression_info.is_first_run:
+        if regression_info.new_failures and config.ci.fail_on_critical:
+            # Nuevos fallos = posible regresión
+            return ExitCode.REGRESSION_DETECTED
     
     # Si está configurado para fallar con cualquier fallo
     if config.ci.fail_on_any_failure:
@@ -138,6 +162,104 @@ def print_fingerprint_summary(summary: Dict[str, Any]):
     console.print()
 
 
+def print_flaky_summary(report: FlakyAnalysisReport):
+    """Muestra resumen de tests flaky en consola."""
+    console.print()
+    console.print("[bold magenta]🎲 Detección de Tests Flaky[/bold magenta]")
+    console.print(f"   • Ejecuciones analizadas: [cyan]{report.runs_analyzed}[/cyan]")
+    
+    if report.runs_analyzed < 3:
+        console.print("   [dim]Se necesitan al menos 3 ejecuciones para detectar flaky tests[/dim]")
+        console.print()
+        return
+    
+    if report.total_flaky_tests == 0:
+        console.print("   [green]✓ No se detectaron tests flaky significativos[/green]")
+        console.print()
+        return
+    
+    console.print(f"   • Tests flaky detectados: [yellow]{report.total_flaky_tests}[/yellow]")
+    console.print(f"   • Score promedio: [cyan]{report.avg_flakiness_score}/100[/cyan]")
+    
+    # Mostrar conteo por severidad
+    severity_parts = []
+    if report.critical_count > 0:
+        severity_parts.append(f"[red]{report.critical_count} críticos[/red]")
+    if report.high_count > 0:
+        severity_parts.append(f"[orange1]{report.high_count} altos[/orange1]")
+    if report.medium_count > 0:
+        severity_parts.append(f"[yellow]{report.medium_count} medios[/yellow]")
+    if report.low_count > 0:
+        severity_parts.append(f"[green]{report.low_count} bajos[/green]")
+    
+    if severity_parts:
+        console.print(f"   • Severidad: {', '.join(severity_parts)}")
+    
+    console.print()
+    
+    # Mostrar top 3 tests más flaky
+    if report.flaky_tests:
+        console.print("   [dim]Tests más inestables:[/dim]")
+        for i, test in enumerate(report.flaky_tests[:3], 1):
+            severity_color = {
+                FlakinessSeverity.CRITICAL: "red",
+                FlakinessSeverity.HIGH: "orange1",
+                FlakinessSeverity.MEDIUM: "yellow",
+                FlakinessSeverity.LOW: "green"
+            }
+            color = severity_color.get(test.severity, "white")
+            status = "❌" if test.currently_failing else "✅"
+            console.print(
+                f"      {i}. [{color}]{test.test_name[:45]}[/{color}] "
+                f"- Score: {test.flakiness_score} - {test.failure_rate}% fallo {status}"
+            )
+        
+        if report.total_flaky_tests > 3:
+            console.print(f"      [dim]... y {report.total_flaky_tests - 3} más[/dim]")
+    
+    console.print()
+
+
+def print_history_summary(regression_info: RegressionInfo):
+    """Muestra resumen del histórico en consola."""
+    console.print()
+    console.print("[bold blue]📊 Comparación Histórica[/bold blue]")
+    
+    if regression_info.is_first_run:
+        console.print("   [dim]Primera ejecución - no hay datos históricos[/dim]")
+        console.print()
+        return
+    
+    # Mostrar tendencia
+    trend_display = {
+        "improving": ("✅ MEJORANDO", "green"),
+        "degrading": ("⚠️  EMPEORANDO", "red"),
+        "stable": ("➡️  ESTABLE", "yellow")
+    }
+    trend_text, trend_color = trend_display.get(
+        regression_info.trend, 
+        ("? DESCONOCIDO", "white")
+    )
+    console.print(f"   • Tendencia: [{trend_color}]{trend_text}[/{trend_color}]")
+    
+    # Mostrar cambios
+    if regression_info.new_failures:
+        console.print(f"   • Nuevos fallos: [red]{len(regression_info.new_failures)}[/red] (⚠️  posibles regresiones)")
+    if regression_info.fixed_failures:
+        console.print(f"   • Fallos corregidos: [green]{len(regression_info.fixed_failures)}[/green]")
+    if regression_info.persistent_failures:
+        console.print(f"   • Fallos persistentes: [yellow]{len(regression_info.persistent_failures)}[/yellow]")
+    
+    # Mostrar info de run anterior
+    if regression_info.previous_run:
+        prev = regression_info.previous_run
+        console.print(f"   • Run anterior: {prev.total_failures} fallos ")
+        if prev.git_commit:
+            console.print(f"      [dim]Commit: {prev.git_commit}[/dim]")
+    
+    console.print()
+
+
 def print_exit_code_info(exit_code: int):
     """Muestra información sobre el código de salida."""
     code_info = {
@@ -147,6 +269,8 @@ def print_exit_code_info(exit_code: int):
         ExitCode.ANALYSIS_ERROR: ("💥 ERROR", "red", "Error durante el análisis"),
         ExitCode.CONFIG_ERROR: ("⚙️  CONFIG ERROR", "red", "Error de configuración"),
         ExitCode.NO_REPORTS_FOUND: ("📭 NO REPORTS", "yellow", "No se encontraron reportes"),
+        ExitCode.REGRESSION_DETECTED: ("🚨 REGRESSION", "red", "Regresión detectada (nuevos fallos)"),
+        ExitCode.CRITICAL_FLAKY: ("🎲 CRITICAL FLAKY", "red", "Tests flaky críticos detectados"),
     }
     
     label, color, description = code_info.get(
@@ -270,6 +394,48 @@ Exit codes:
         help="Máximo de fallos a analizar (para limitar tokens)"
     )
     
+    # === Opciones de histórico ===
+    history_group = parser.add_argument_group('Histórico y regresiones')
+    history_group.add_argument(
+        "--enable-history", action="store_true",
+        help="Habilitar tracking de histórico para detectar regresiones"
+    )
+    history_group.add_argument(
+        "--no-history", action="store_true",
+        help="Desactivar histórico (override de config)"
+    )
+    history_group.add_argument(
+        "--history-db", type=str, default=None,
+        help="Path a la base de datos de histórico (default: .analyzer_history.db)"
+    )
+    
+    # === Opciones de Flaky Detection ===
+    flaky_group = parser.add_argument_group('Detección de tests flaky')
+    flaky_group.add_argument(
+        "--enable-flaky", action="store_true",
+        help="Habilitar detección de tests flaky (requiere histórico)"
+    )
+    flaky_group.add_argument(
+        "--no-flaky", action="store_true",
+        help="Desactivar detección de flaky (override de config)"
+    )
+    flaky_group.add_argument(
+        "--flaky-window", type=int, default=None,
+        help="Número de ejecuciones a analizar para flaky (default: 20)"
+    )
+    flaky_group.add_argument(
+        "--flaky-min-score", type=float, default=None,
+        help="Score mínimo para considerar un test como flaky (default: 20.0)"
+    )
+    flaky_group.add_argument(
+        "--flaky-report-only", action="store_true",
+        help="Solo generar reporte de flaky tests (sin análisis LLM)"
+    )
+    flaky_group.add_argument(
+        "--fail-on-critical-flaky", action="store_true",
+        help="Exit code 7 si hay tests flaky críticos"
+    )
+    
     return parser
 
 
@@ -301,6 +467,28 @@ def main() -> int:
             config.analysis.enable_fingerprinting = False
         if args.max_failures:
             config.analysis.max_failures_to_analyze = args.max_failures
+        
+        # Overrides de histórico
+        if args.enable_history:
+            config.analysis.enable_historical = True
+        if args.no_history:
+            config.analysis.enable_historical = False
+        if args.history_db:
+            config.analysis.history_db_path = Path(args.history_db)
+        
+        # Overrides de flaky
+        if args.enable_flaky:
+            config.flaky.enable_flaky_detection = True
+            # Flaky requiere histórico
+            config.analysis.enable_historical = True
+        if args.no_flaky:
+            config.flaky.enable_flaky_detection = False
+        if args.flaky_window:
+            config.flaky.window_size = args.flaky_window
+        if args.flaky_min_score:
+            config.flaky.min_flakiness_score = args.flaky_min_score
+        if args.fail_on_critical_flaky:
+            config.flaky.fail_on_critical_flaky = True
             
     except Exception as e:
         console.print(f"[bold red]❌ Error de configuración:[/bold red] {str(e)}")
@@ -389,10 +577,11 @@ def main() -> int:
 
     # === Fingerprinting ===
     fingerprint_summary = None
+    all_grouped = {}
+    current_fingerprints = []
+    
     if config.analysis.enable_fingerprinting:
         # Agrupar todos los fallos por fingerprint
-        all_grouped = {}
-        
         junit_grouped = group_failures_by_fingerprint(junit_failures, "junit")
         cucumber_grouped = group_failures_by_fingerprint(cucumber_failures, "cucumber")
         playwright_grouped = group_failures_by_fingerprint(playwright_failures, "playwright")
@@ -409,10 +598,95 @@ def main() -> int:
                 else:
                     all_grouped[fp] = data
         
+        current_fingerprints = list(all_grouped.keys())
         fingerprint_summary = get_pattern_summary(all_grouped)
         
         if not args.quiet:
             print_fingerprint_summary(fingerprint_summary)
+
+    # === Histórico y Regresión ===
+    regression_info = None
+    history = None
+    
+    if config.analysis.enable_historical:
+        try:
+            history = AnalysisHistory(config.analysis.history_db_path)
+            
+            # Obtener info de regresión antes de registrar el run actual
+            regression_info = history.get_regression_info(current_fingerprints)
+            
+            if not args.quiet:
+                print_history_summary(regression_info)
+                
+        except Exception as e:
+            if not args.quiet:
+                console.print(f"[yellow]⚠️  Error al acceder al histórico: {e}[/yellow]")
+                console.print("   [dim]Continuando sin datos históricos...[/dim]")
+                console.print()
+
+    # === Detección de Flaky Tests ===
+    flaky_report = None
+    flaky_prompt_text = ""
+    
+    if config.flaky.enable_flaky_detection and config.analysis.enable_historical:
+        try:
+            flaky_detector = FlakyDetector(config.analysis.history_db_path)
+            
+            flaky_report = flaky_detector.analyze(
+                window_size=config.flaky.window_size,
+                days=config.flaky.window_days,
+                min_appearances=config.flaky.min_appearances,
+                min_flakiness_score=config.flaky.min_flakiness_score,
+                current_fingerprints=current_fingerprints
+            )
+            
+            if not args.quiet:
+                print_flaky_summary(flaky_report)
+            
+            # Generar texto para el prompt del LLM
+            if config.flaky.include_in_analysis and flaky_report.total_flaky_tests > 0:
+                flaky_prompt_text = flaky_detector.get_flaky_summary_for_prompt(
+                    flaky_report, max_tests=5
+                )
+                
+        except Exception as e:
+            if not args.quiet:
+                console.print(f"[yellow]⚠️  Error en detección de flaky: {e}[/yellow]")
+                console.print()
+
+    # === Modo --flaky-report-only ===
+    if args.flaky_report_only:
+        if not args.quiet:
+            if flaky_report:
+                console.print()
+                console.print(Panel(
+                    "[bold magenta]🎲 Reporte de Tests Flaky[/bold magenta]",
+                    border_style="magenta"
+                ))
+                console.print()
+                console.print(format_flaky_report_console(flaky_report))
+                console.print()
+                
+                # Mostrar recomendaciones generales
+                if flaky_report.general_recommendations:
+                    console.print("[bold]Recomendaciones:[/bold]")
+                    for rec in flaky_report.general_recommendations:
+                        console.print(f"   • {rec}")
+                    console.print()
+            else:
+                console.print("[yellow]No hay suficientes datos para generar reporte de flaky tests.[/yellow]")
+                console.print("[dim]Se necesitan al menos 3 ejecuciones con histórico habilitado.[/dim]")
+        
+        # Determinar exit code para modo flaky-only
+        exit_code = ExitCode.SUCCESS
+        if flaky_report and config.flaky.fail_on_critical_flaky:
+            if flaky_report.critical_count > 0:
+                exit_code = ExitCode.CRITICAL_FLAKY
+        
+        if args.show_exit_code:
+            print_exit_code_info(exit_code)
+        
+        return exit_code
 
     # === Mostrar resumen ===
     if not args.quiet:
@@ -430,12 +704,37 @@ def main() -> int:
             playwright_failures=playwright_failures,
             model=config.llm.model,
             fingerprint_summary=fingerprint_summary,
+            regression_info=regression_info,
+            flaky_summary=flaky_prompt_text if flaky_prompt_text else None,
         )
     except Exception as e:
         console.print(f"[bold red]❌ Error durante el análisis:[/bold red] {str(e)}")
         if args.show_exit_code:
             print_exit_code_info(ExitCode.ANALYSIS_ERROR)
         return ExitCode.ANALYSIS_ERROR
+
+    # === Registrar en histórico (después del análisis exitoso) ===
+    if history and config.analysis.enable_historical:
+        try:
+            failures_dict = {
+                'junit': junit_failures,
+                'cucumber': cucumber_failures,
+                'playwright': playwright_failures
+            }
+            # Extraer primeras líneas del análisis como resumen
+            analysis_summary = analysis_markdown[:500] if analysis_markdown else ""
+            
+            history.record_run(
+                failures=failures_dict,
+                fingerprints=current_fingerprints,
+                fingerprint_details=all_grouped,
+                analysis_summary=analysis_summary
+            )
+            if not args.quiet:
+                console.print("[dim]✓ Ejecución registrada en histórico[/dim]")
+        except Exception as e:
+            if not args.quiet:
+                console.print(f"[yellow]⚠️  Error al guardar en histórico: {e}[/yellow]")
 
     # === Mostrar análisis ===
     if not args.quiet:
@@ -472,13 +771,29 @@ def main() -> int:
             console.print()
 
     # === Determinar exit code ===
-    exit_code = determine_exit_code(analysis_markdown, total_failures, config)
+    exit_code = determine_exit_code(
+        analysis_markdown, 
+        total_failures, 
+        config,
+        regression_info=regression_info,
+        flaky_report=flaky_report
+    )
 
     # === Mensaje final ===
     if not args.quiet:
         if exit_code == ExitCode.CRITICAL_FAILURES:
             console.print(Panel.fit(
                 "[bold red]⚠️  Se detectaron fallos críticos[/bold red]",
+                border_style="red"
+            ))
+        elif exit_code == ExitCode.REGRESSION_DETECTED:
+            console.print(Panel.fit(
+                "[bold red]🚨 Se detectaron regresiones (nuevos fallos)[/bold red]",
+                border_style="red"
+            ))
+        elif exit_code == ExitCode.CRITICAL_FLAKY:
+            console.print(Panel.fit(
+                "[bold red]🎲 Se detectaron tests flaky críticos[/bold red]",
                 border_style="red"
             ))
         else:

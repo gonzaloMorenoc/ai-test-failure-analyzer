@@ -49,6 +49,18 @@ class AnalysisConfig:
     history_db_path: Path = field(default_factory=lambda: Path(".analyzer_history.db"))
 
 
+@dataclass
+class FlakyConfig:
+    """Configuración para detección de tests flaky."""
+    enable_flaky_detection: bool = True
+    window_size: int = 20  # Número de ejecuciones a analizar
+    window_days: Optional[int] = None  # Limitar a los últimos N días (None = sin límite)
+    min_appearances: int = 3  # Mínimo de apariciones para considerar
+    min_flakiness_score: float = 20.0  # Score mínimo para reportar como flaky
+    fail_on_critical_flaky: bool = False  # Fallar build si hay flaky críticos
+    include_in_analysis: bool = True  # Incluir info de flaky en análisis LLM
+
+
 @dataclass 
 class CIConfig:
     """Configuración para integración CI/CD."""
@@ -64,6 +76,7 @@ class AnalyzerConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     ci: CIConfig = field(default_factory=CIConfig)
+    flaky: FlakyConfig = field(default_factory=FlakyConfig)
 
 
 def _deep_merge(base: Dict, override: Dict) -> Dict:
@@ -110,6 +123,18 @@ def _apply_env_overrides(config: AnalyzerConfig) -> AnalyzerConfig:
     if env_val := os.getenv("ANALYZER_FAIL_ON_ANY"):
         config.ci.fail_on_any_failure = env_val.lower() in ("true", "1", "yes")
     
+    # Flaky Config
+    if env_val := os.getenv("ANALYZER_ENABLE_FLAKY"):
+        config.flaky.enable_flaky_detection = env_val.lower() in ("true", "1", "yes")
+    if env_val := os.getenv("ANALYZER_FLAKY_WINDOW_SIZE"):
+        config.flaky.window_size = int(env_val)
+    if env_val := os.getenv("ANALYZER_FLAKY_WINDOW_DAYS"):
+        config.flaky.window_days = int(env_val) if env_val else None
+    if env_val := os.getenv("ANALYZER_FLAKY_MIN_SCORE"):
+        config.flaky.min_flakiness_score = float(env_val)
+    if env_val := os.getenv("ANALYZER_FAIL_ON_CRITICAL_FLAKY"):
+        config.flaky.fail_on_critical_flaky = env_val.lower() in ("true", "1", "yes")
+    
     return config
 
 
@@ -153,6 +178,24 @@ def _config_from_dict(data: Dict[str, Any]) -> AnalyzerConfig:
         config.ci.fail_on_critical = ci_data.get("fail_on_critical", config.ci.fail_on_critical)
         config.ci.fail_on_any_failure = ci_data.get("fail_on_any_failure", config.ci.fail_on_any_failure)
         config.ci.critical_threshold = ci_data.get("critical_threshold", config.ci.critical_threshold)
+    
+    # Flaky
+    if flaky_data := data.get("flaky"):
+        config.flaky.enable_flaky_detection = flaky_data.get(
+            "enable_flaky_detection", config.flaky.enable_flaky_detection
+        )
+        config.flaky.window_size = flaky_data.get("window_size", config.flaky.window_size)
+        config.flaky.window_days = flaky_data.get("window_days", config.flaky.window_days)
+        config.flaky.min_appearances = flaky_data.get("min_appearances", config.flaky.min_appearances)
+        config.flaky.min_flakiness_score = flaky_data.get(
+            "min_flakiness_score", config.flaky.min_flakiness_score
+        )
+        config.flaky.fail_on_critical_flaky = flaky_data.get(
+            "fail_on_critical_flaky", config.flaky.fail_on_critical_flaky
+        )
+        config.flaky.include_in_analysis = flaky_data.get(
+            "include_in_analysis", config.flaky.include_in_analysis
+        )
     
     return config
 

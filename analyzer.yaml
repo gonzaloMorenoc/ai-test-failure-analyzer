@@ -88,3 +88,34 @@ ci:
   
   # Número mínimo de indicadores críticos para considerar el build fallido
   critical_threshold: 1
+
+# -----------------------------------------------------------------------------
+# Detección de Tests Flaky (Intermitentes)
+# -----------------------------------------------------------------------------
+flaky:
+  # Habilitar detección automática de tests flaky
+  # Requiere que enable_historical esté activado
+  # Override: ANALYZER_ENABLE_FLAKY
+  enable_flaky_detection: true
+  
+  # Número de ejecuciones a analizar para detectar flakiness
+  # Override: ANALYZER_FLAKY_WINDOW_SIZE
+  window_size: 20
+  
+  # Limitar análisis a los últimos N días (null = sin límite)
+  # Override: ANALYZER_FLAKY_WINDOW_DAYS
+  window_days: null
+  
+  # Mínimo de apariciones de un test para considerarlo en el análisis
+  min_appearances: 3
+  
+  # Score mínimo de flakiness para reportar un test (0-100)
+  # Override: ANALYZER_FLAKY_MIN_SCORE
+  min_flakiness_score: 20.0
+  
+  # Fallar el build si hay tests flaky con severidad crítica
+  # Override: ANALYZER_FAIL_ON_CRITICAL_FLAKY
+  fail_on_critical_flaky: false
+  
+  # Incluir información de flaky tests en el análisis del LLM
+  include_in_analysis: true

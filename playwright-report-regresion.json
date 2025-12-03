@@ -1,0 +1,258 @@
+{
+    "config": {
+      "rootDir": "/path/to/tests",
+      "version": "1.40.0"
+    },
+    "suites": [
+      {
+        "title": "Authentication Tests",
+        "file": "tests/auth.spec.ts",
+        "specs": [
+          {
+            "title": "should login successfully with valid credentials",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "chromium",
+                "projectName": "chromium",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "status": "passed",
+                    "duration": 2100,
+                    "startTime": "2024-01-15T10:30:00.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          },
+          {
+            "title": "should show error with invalid credentials",
+            "ok": false,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "chromium",
+                "projectName": "chromium",
+                "results": [
+                  {
+                    "workerIndex": 1,
+                    "status": "failed",
+                    "duration": 5130,
+                    "startTime": "2024-01-15T10:30:05.000Z",
+                    "error": {
+                      "message": "Timeout 5000ms exceeded.\nWaiting for locator('.error-message') to be visible",
+                      "stack": "Error: Timeout 5000ms exceeded.\n    at Locator.waitFor (/path/to/node_modules/@playwright/test/lib/locator.js:123:15)\n    at /path/to/tests/auth.spec.ts:42:7"
+                    }
+                  }
+                ],
+                "status": "unexpected"
+              }
+            ]
+          },
+          {
+            "title": "should logout successfully",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "firefox",
+                "projectName": "firefox",
+                "results": [
+                  {
+                    "workerIndex": 2,
+                    "status": "passed",
+                    "duration": 1750,
+                    "startTime": "2024-01-15T10:30:12.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          },
+          {
+            "title": "should redirect to login when session expires",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "webkit",
+                "projectName": "webkit",
+                "results": [
+                  {
+                    "workerIndex": 3,
+                    "status": "passed",
+                    "duration": 2430,
+                    "startTime": "2024-01-15T10:30:18.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Product Catalog Tests",
+        "file": "tests/products.spec.ts",
+        "specs": [
+          {
+            "title": "should load product list",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "chromium",
+                "projectName": "chromium",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "status": "passed",
+                    "duration": 1823,
+                    "startTime": "2024-01-15T10:30:24.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          },
+          {
+            "title": "should filter products by category",
+            "ok": false,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "firefox",
+                "projectName": "firefox",
+                "results": [
+                  {
+                    "workerIndex": 1,
+                    "status": "timedOut",
+                    "duration": 30000,
+                    "startTime": "2024-01-15T10:30:28.000Z",
+                    "error": {
+                      "message": "Test timeout of 30000ms exceeded.",
+                      "stack": "Error: Test timeout of 30000ms exceeded.\n    at Timeout._onTimeout (/path/to/node_modules/@playwright/test/lib/worker.js:234:12)"
+                    }
+                  }
+                ],
+                "status": "unexpected"
+              }
+            ]
+          },
+          {
+            "title": "should search products by name",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "webkit",
+                "projectName": "webkit",
+                "results": [
+                  {
+                    "workerIndex": 2,
+                    "status": "passed",
+                    "duration": 1950,
+                    "startTime": "2024-01-15T10:30:36.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Shopping Cart Tests",
+        "file": "tests/cart.spec.ts",
+        "specs": [
+          {
+            "title": "should add product to cart",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "chromium",
+                "projectName": "chromium",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "status": "passed",
+                    "duration": 2200,
+                    "startTime": "2024-01-15T10:30:40.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          },
+          {
+            "title": "should update product quantity in cart",
+            "ok": true,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "firefox",
+                "projectName": "firefox",
+                "results": [
+                  {
+                    "workerIndex": 1,
+                    "status": "passed",
+                    "duration": 2600,
+                    "startTime": "2024-01-15T10:30:45.000Z"
+                  }
+                ],
+                "status": "expected"
+              }
+            ]
+          },
+          {
+            "title": "should show error when checkout fails",
+            "ok": false,
+            "tests": [
+              {
+                "timeout": 30000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "chromium",
+                "projectName": "chromium",
+                "results": [
+                  {
+                    "workerIndex": 3,
+                    "status": "failed",
+                    "duration": 3456,
+                    "startTime": "2024-01-15T10:30:50.000Z",
+                    "error": {
+                      "message": "expect(received).toBe(expected)\n\nExpected: \"Order success\"\nReceived: \"Order failed\"",
+                      "stack": "Error: expect(received).toBe(expected)\n\nExpected: \"Order success\"\nReceived: \"Order failed\"\n    at /path/to/tests/cart.spec.ts:78:19\n    at /path/to/node_modules/@playwright/test/lib/test.js:156:23"
+                    }
+                  }
+                ],
+                "status": "unexpected"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }

@@ -100,3 +100,40 @@ ci:
   
   # Nota: Con histórico habilitado, las regresiones (nuevos fallos)
   # también pueden generar exit code 6 (REGRESSION_DETECTED)
+
+# -----------------------------------------------------------------------------
+# Detección de Tests Flaky (Intermitentes)
+# -----------------------------------------------------------------------------
+flaky:
+  # Habilitar detección automática de tests flaky
+  # Requiere que enable_historical esté activado
+  # Override: ANALYZER_ENABLE_FLAKY
+  enable_flaky_detection: true
+  
+  # Número de ejecuciones a analizar para detectar flakiness
+  # Más ejecuciones = más precisión pero más tiempo de análisis
+  # Override: ANALYZER_FLAKY_WINDOW_SIZE
+  window_size: 20
+  
+  # Limitar análisis a los últimos N días (null = sin límite)
+  # Útil para ignorar datos muy antiguos
+  # Override: ANALYZER_FLAKY_WINDOW_DAYS
+  window_days: null
+  
+  # Mínimo de apariciones de un test para considerarlo en el análisis
+  # Tests con pocas apariciones no tienen suficientes datos para detectar flakiness
+  min_appearances: 3
+  
+  # Score mínimo de flakiness para reportar un test (0-100)
+  # Scores bajos (<20) suelen ser falsos positivos
+  # Override: ANALYZER_FLAKY_MIN_SCORE
+  min_flakiness_score: 20.0
+  
+  # Fallar el build si hay tests flaky con severidad crítica (exit code 7)
+  # Severidades: low (<30), medium (30-50), high (50-70), critical (>70)
+  # Override: ANALYZER_FAIL_ON_CRITICAL_FLAKY
+  fail_on_critical_flaky: false
+  
+  # Incluir información de flaky tests en el análisis del LLM
+  # El LLM puede dar recomendaciones específicas para tests flaky
+  include_in_analysis: true
