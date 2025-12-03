@@ -34,7 +34,6 @@ wheels/
 # Output directory
 output/
 *.html
-*.md
 
 # Logs
 *.log
